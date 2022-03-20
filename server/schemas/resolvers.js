@@ -1,4 +1,4 @@
-const { Book, User } = require('../models');
+const { User } = require('../models');
 const { AuthenticationError } = require('apollo-server-express');
 const { signToken } = require('../utils/auth');
 
@@ -8,10 +8,15 @@ const resolvers = {
       if (context.user) {
         const userData = await User.findOne({ _id: context.user._id })
           .select('-__v -password')
-          .populate('savedBooks');
         return userData;
       }
       throw new AuthenticationError('User is not logged in');
+    },
+    users: async () => {
+      return User.find().select('-__v -password');
+    },
+    user: async (parent, { username }) => {
+      return User.findOne({ username }).select('-__v -password');
     }
   },
   Mutation: {
@@ -19,7 +24,7 @@ const resolvers = {
       const user = await User.findOne({ email });
       if (!user) throw new AuthenticationError('Incorrect credentials');
 
-      const correctPW = await User.isCorrectPassword(password);
+      const correctPW = await user.isCorrectPassword(password);
       if (!correctPW) throw new AuthenticationError('Incorrect credentials');
 
       const token = signToken(user);
@@ -32,10 +37,9 @@ const resolvers = {
     },
     saveBook: async (parent, args, context) => {
       if (context.user) {
-        const book = await Book.create(args);
         const user = await User.findOneAndUpdate(
           { _id: context.user._id },
-          { $push: { savedBooks: book._id } },
+          { $push: { savedBooks: args } },
           { new: true }
         );
         return user;
@@ -44,12 +48,12 @@ const resolvers = {
     },
     removeBook: async (parent, { bookId }, context) => {
       if (context.user) {
-        const book = await Book.findOneAndDelete({ bookId });
         const user = await User.findOneAndUpdate(
-          { _id: user.context._id },
-          { $pull: { savedBooks: book._id } },
+          { _id: context.user._id },
+          { $pull: { savedBooks: { bookId: bookId } } },
           { new: true }
         );
+        return user;
       }
       throw new AuthenticationError('User is not logged in');
     }
